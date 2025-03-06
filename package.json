@@ -10,7 +10,10 @@
   },
   "dependencies": {
     "@types/formidable": "^3.4.5",
+    "axios": "^1.8.1",
+    "file-saver": "^2.0.5",
     "formidable": "^3.5.2",
+    "jszip": "^3.10.1",
     "next": "15.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
