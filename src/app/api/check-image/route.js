@@ -11,7 +11,6 @@ export async function POST(request) {
       return NextResponse.json({ message: 'No file uploaded' }, { status: 400 });
     }
 
-    // Validate file type
     const fileName = file.name.toLowerCase();
     const isValidType = VALID_IMAGE_EXTENSIONS.some(ext => fileName.endsWith(ext));
     
