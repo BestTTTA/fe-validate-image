@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Image from 'next/image'
 import UploadProgress from '../components/UploadProgress'
 import { IoClose } from "react-icons/io5";
-import axios from 'axios'  // เพิ่ม import นี้ที่ด้านบนของไฟล์
+import axios from 'axios'  
 
 const VALID_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp']
 
@@ -33,10 +33,8 @@ export default function Upload() {
     setPreviewUrls(urls)
   }
 
-  // Add new state for tracking individual file progress
   const [fileProgress, setFileProgress] = useState({})
 
-  // Modify handleSubmit
   const handleSubmit = async (event) => {
       event.preventDefault()
       if (selectedFiles.length === 0) return
@@ -131,37 +129,28 @@ export default function Upload() {
           </button>
 
           {previewUrls.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-              {previewUrls.map((url, index) => (
-                <div key={index} className="relative">
-                  <div className="aspect-square relative rounded-lg overflow-hidden">
-                    <Image
-                      src={url}
-                      alt={`Preview ${index + 1}`}
-                      fill
-                      className="object-cover"
-                    />
+            <div className="bg-white rounded-lg shadow p-4 mb-4">
+              <h3 className="text-lg font-semibold mb-3">Selected Files ({selectedFiles.length})</h3>
+              <div className="space-y-2">
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-gray-600">{index + 1}.</span>
+                      <span className="text-gray-800">{file.name}</span>
+                    </div>
                     {loading && (
-                      <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col justify-center items-center">
-                        <div className="w-3/4">
-                          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                            <div
-                              className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-                              style={{ width: `${fileProgress[selectedFiles[index]?.name] || 0}%` }}
-                            />
-                          </div>
-                          <p className="text-white text-center text-sm">
-                            {fileProgress[selectedFiles[index]?.name] || 0}%
-                          </p>
+                      <div className="w-32">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${fileProgress[file.name] || 0}%` }}
+                          />
                         </div>
                       </div>
                     )}
                   </div>
-                  <p className="mt-1 text-sm text-gray-600 truncate">
-                    {selectedFiles[index]?.name}
-                  </p>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
