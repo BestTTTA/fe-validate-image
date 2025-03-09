@@ -55,7 +55,7 @@ export default function Upload() {
   
       try {
         const response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/upload-image/upload-multiple`,
+          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/upload-image/batch-process`,
           formData,
           {
             headers: {
