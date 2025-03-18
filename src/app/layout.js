@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Image Checker",
+  title: "Where is my picture?",
   description: "",
 };
 

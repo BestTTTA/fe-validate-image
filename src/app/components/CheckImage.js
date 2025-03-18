@@ -1,11 +1,9 @@
 "use client"
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import Image from 'next/image'
-import { MdKeyboardDoubleArrowRight } from "react-icons/md";
-import { FaDownload, FaCheck, FaTimes } from "react-icons/fa";
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
+import { FaDownload, FaCheck, FaTimes } from 'react-icons/fa'
 import MatchingImages from './MatchingImages'
+import { LuScanFace } from "react-icons/lu";
 
 const VALID_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp']
 
@@ -13,8 +11,6 @@ const isValidImageType = (file) => {
     if (!file) return false
     return VALID_IMAGE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))
 }
-
-
 
 export default function CheckImage() {
     const [uploadResults, setUploadResults] = useState(null)
@@ -27,15 +23,7 @@ export default function CheckImage() {
     const [agreedToTerms, setAgreedToTerms] = useState(false)
     const [showTermsModal, setShowTermsModal] = useState(false)
     const [selectedImages, setSelectedImages] = useState([])
-    const [viewImageModal, setViewImageModal] = useState(null)
-    const [downloadingZip, setDownloadingZip] = useState(false)
     const [showMatches, setShowMatches] = useState(false)
-    
-    // Load required libraries
-    useEffect(() => {
-        // This would load the JSZip and FileSaver libraries in a real implementation
-        // We're assuming they're already loaded via import
-    }, []);
 
     const handleFileSelect = (event) => {
         if (event.target.files && event.target.files[0]) {
@@ -57,126 +45,115 @@ export default function CheckImage() {
         if (!selectedFile) return
 
         setLoading(true)
-        setMessage('')
+        setMessage('Connecting to API...')
         setMatches([])
         setUploadProgress(0)
         setUploadResults(null)
         setSelectedImages([])
 
+        // ตรวจสอบค่า API URL
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL
+        if (!apiUrl) {
+            setMessage('API URL is not configured.')
+            setLoading(false)
+            return
+        }
+        console.log("Connecting to API:", apiUrl)
+
         const formData = new FormData()
         formData.append('file', selectedFile)
+        // ส่ง tolerance ตามที่ API backend กำหนด (อาจมีการตั้ง default เป็น 0.6)
+        formData.append('tolerance', '0.6')
 
         try {
-            const response = await fetch('/api/check-image', {
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 90000)
+
+            const response = await fetch(`${apiUrl}/search/`, {
                 method: 'POST',
+                mode: 'cors',
+                credentials: 'omit',
+                signal: controller.signal,
                 body: formData,
-                onUploadProgress: (progressEvent) => {
-                    const progress = Math.round(
-                        (progressEvent.loaded * 100) / progressEvent.total
-                    )
-                    setUploadProgress(progress)
-                },
             })
 
+            clearTimeout(timeoutId)
+            console.log("Response status:", response.status)
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`)
+            }
+
+            const contentType = response.headers.get("content-type")
+            console.log("Content-Type:", contentType)
+
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error('Unexpected content type: ' + (contentType || 'none'))
+            }
+
             const data = await response.json()
-            setMessage(data.message)
-            if (data.matches) {
-                setMatches(data.matches)
-                setShowMatches(true)  // Show matching images page
+            console.log("API response data:", data)
+
+            let processedMatches = []
+            if (data.results && Array.isArray(data.results)) {
+                console.log(`Found ${data.results.length} matches in new format`)
+                processedMatches = data.results.map((match, index) => ({
+                    id: match.face_id || `match-${index}`,
+                    confidence: match.confidence || 0,
+                    image_url: match.image_url || null,
+                    // เก็บ key ที่เป็นชื่อ object ของ Minio ไว้ใน image_url field หรือ field แยกต่างหากถ้าต้องการ
+                    image_path: match.image_url ? match.image_url.split('/').pop() : null,
+                    face_location: match.face_location || null,
+                    metadata: match.metadata || {}
+                }))
+            } else if (data.matched_images && Array.isArray(data.matched_images)) {
+                console.log(`Found ${data.matched_images.length} matches in old format`)
+                processedMatches = data.matched_images.map((match, index) => ({
+                    id: match.id || `match-${index}`,
+                    confidence: match.confidence || 0,
+                    image_url: match.image_url || match.url || null,
+                    image_path: match.image_url ? match.image_url.split('/').pop() : null,
+                    base64: match.base64 || null,
+                }))
+            } else {
+                setMessage('No matching images or invalid response format')
+                return
             }
-            if (data.uploadResults) {
-                setUploadResults(data.uploadResults)
-            }
+
+            // กรองผลลัพธ์ให้เหลือเฉพาะ match ที่ confidence มากกว่า 60%
+            processedMatches = processedMatches.filter(match => match.confidence > 60 && match.image_url)
+
+            setMatches(processedMatches)
+            setShowMatches(true)
+            setMessage(`Found ${processedMatches.length} matching images`)
         } catch (error) {
-            setMessage('Error processing image')
             console.error('Error:', error)
+            setMessage(`Error: ${error.message}`)
         } finally {
             setLoading(false)
-            setUploadProgress(0)
         }
-    }
-
-    // Toggle select image for download
-    const toggleSelectImage = (index) => {
-        if (selectedImages.includes(index)) {
-            setSelectedImages(selectedImages.filter(i => i !== index))
-        } else {
-            setSelectedImages([...selectedImages, index])
-        }
-    }
-
-    // Select all images
-    const selectAllImages = () => {
-        if (selectedImages.length === matches.length) {
-            setSelectedImages([])
-        } else {
-            setSelectedImages([...Array(matches.length).keys()])
-        }
-    }
-
-    // Download a single image
-    const downloadImage = (base64Data, index) => {
-        const link = document.createElement('a')
-        link.href = `data:image/jpeg;base64,${base64Data}`
-        link.download = `match-${index + 1}.jpg`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-    }
-
-    // Download selected images as zip
-    const downloadSelectedImages = async () => {
-        const imagesToDownload = selectedImages.length > 0 ? selectedImages : [...Array(matches.length).keys()]
-        
-        if (imagesToDownload.length === 1) {
-            // Download single image directly
-            downloadImage(matches[imagesToDownload[0]], imagesToDownload[0])
-        } else {
-            // Create zip for multiple images
-            try {
-                setDownloadingZip(true)
-                const zip = new JSZip();
-                
-                // Add each selected image to the zip
-                imagesToDownload.forEach((index) => {
-                    const base64Data = matches[index];
-                    // Convert base64 to binary
-                    const binaryString = atob(base64Data);
-                    const bytes = new Uint8Array(binaryString.length);
-                    for (let i = 0; i < binaryString.length; i++) {
-                        bytes[i] = binaryString.charCodeAt(i);
-                    }
-                    // Add file to zip
-                    zip.file(`match-${index + 1}.jpg`, bytes.buffer, {binary: true});
-                });
-                
-                // Generate the zip file
-                const content = await zip.generateAsync({type: 'blob'});
-                
-                // Save the zip file
-                saveAs(content, 'matches.zip');
-                
-                setMessage(`Successfully downloaded ${imagesToDownload.length} images as a zip file`);
-            } catch (error) {
-                console.error('Error creating zip file:', error);
-                setMessage('Error creating zip file for download');
-            } finally {
-                setDownloadingZip(false);
-            }
-        }
-    }
-
-    // Open image in modal view
-    const openImageModal = (index) => {
-        setViewImageModal(index)
     }
 
     return (
-        <div className="h-lvh bg-cover bg-center bg-no-repeat relative bg-gray-900">
+        // <div className="h-lvh bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url("/korat-night-bg.jpg")' }}>
+        <div className="h-lvh bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url("/green-bg.jpeg")' }}>
+
             <div className="mx-auto p-4 relative h-full">
                 <div className={`flex flex-col h-full justify-center md:flex-row gap-8 transition-all duration-500 ease-in-out ${previewUrl ? 'justify-between' : 'justify-center'}`}>
-                    <div className={`flex flex-col items-center justify-center transition-all duration-500 ease-in-out h-full border shadow-xl bg-gray-700 rounded-2xl p-6 px-16`}>
-                    <h1 className="text-3xl font-bold text-center text-white mb-8">ค้นหารูปของคุณ</h1>
+                    <div className="flex flex-col items-center justify-center transition-all duration-500 ease-in-out h-full border-white border-4 shadow-xl drop-shadow-md bg-gray-900 rounded-2xl p-6 px-16">
+                        {/* <div className="flex flex-col mb-8">
+              <Image
+                src="/korat-night.png"
+                alt="Korat Night Logo"
+                width={200}
+                height={100}
+                className="mb-4"
+                priority
+              />
+            </div> */}
+                        <div className="flex flex-col mb-8">
+                            <LuScanFace size={150} className='text-gray-400' />
+                        </div>
                         {previewUrl && (
                             <div className="flex flex-col mb-2">
                                 <div className="relative rounded-lg shadow-md group">
@@ -190,10 +167,10 @@ export default function CheckImage() {
                                     />
                                     <button
                                         onClick={() => {
-                                            setSelectedFile(null);
-                                            setPreviewUrl(null);
-                                            setMatches([]);
-                                            setMessage('');
+                                            setSelectedFile(null)
+                                            setPreviewUrl(null)
+                                            setMatches([])
+                                            setMessage('')
                                         }}
                                         className="absolute -top-2 -right-2 bg-gray-500 hover:bg-gray-600 text-white rounded-full p-2 shadow-lg"
                                         type="button"
@@ -222,7 +199,7 @@ export default function CheckImage() {
                                                 <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                             </svg>
                                             <p className="mt-1 text-sm text-gray-600">
-                                                Upload your image here
+                                                อัพโหลดรูปภาพใบหน้าที่นี่
                                             </p>
                                             <p className="mt-1 text-xs text-gray-500">
                                                 {VALID_IMAGE_EXTENSIONS.join(', ')} files supported
@@ -252,25 +229,43 @@ export default function CheckImage() {
                                 </label>
                             </div>
                         </form>
+                        {showTermsModal && (
+                            <div className="fixed bottom-0 bg-transparent bg-opacity-75 flex items-center justify-center z-50 h-full w-full">
+                                <div className="bg-white p-6 rounded-lg shadow-lg max-w-lg w-full">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="text-xl font-bold">Terms of Use for Facial Recognition</h2>
+                                        <button
+                                            onClick={() => setShowTermsModal(false)}
+                                            className="w-6 h-6 bg-gray-500 border rounded-full text-white hover:text-gray-700 flex items-center justify-center hover:bg-gray-100"
+                                        >
+                                            X
+                                        </button>
+                                    </div>
+                                    <div className="text-sm text-gray-700 overflow-y-auto max-h-96">
+                                        {/* Terms content */}
+                                        <p>[Terms content here...]</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-
                     {matches.length > 0 && showMatches && (
-                        <MatchingImages 
-                            matches={matches} 
-                            onClose={() => setShowMatches(false)} 
+                        <MatchingImages
+                            matches={matches}
+                            onClose={() => setShowMatches(false)}
                         />
                     )}
 
                     {message && (
                         <div className={`bottom-0 left-0 flex p-4 ${message.includes("Matching") || message.includes("Successfully") ? "bg-green-100 border-green-400 border" : "bg-red-200 border-red-400 border"} absolute opacity-0 animate-slide-in-l`}>
-                            <p className={`${message.includes("Matching") || message.includes("Successfully") ? "text-green-500" : "text-red-500"}`}>{message}</p>
+                            <p className={`${message.includes("Matching") || message.includes("Successfully") ? "text-green-500" : "text-red-500"}`}>
+                                {message.includes("Error processing image") ? "Please try again..." : message}
+                            </p>
                         </div>
                     )}
-                
                 </div>
             </div>
-
         </div>
     )
 }
