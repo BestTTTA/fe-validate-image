@@ -5,11 +5,15 @@ import { FaDownload, FaCheck, FaTimes } from 'react-icons/fa'
 import MatchingImages from './MatchingImages'
 import { LuScanFace } from "react-icons/lu";
 
-const VALID_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp']
+const VALID_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp', '.heic', '.heif']
+const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB in bytes
 
 const isValidImageType = (file) => {
     if (!file) return false
-    return VALID_IMAGE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))
+    if (file.size > MAX_FILE_SIZE) {
+        return 'File size exceeds 2MB limit'
+    }
+    return VALID_IMAGE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext)) ? true : 'Unsupported file type'
 }
 
 export default function CheckImage() {
@@ -28,8 +32,9 @@ export default function CheckImage() {
     const handleFileSelect = (event) => {
         if (event.target.files && event.target.files[0]) {
             const file = event.target.files[0]
-            if (!isValidImageType(file)) {
-                setMessage('Please select a valid image file (.jpg, .jpeg, .png, .bmp, .tiff, .webp)')
+            const validationResult = isValidImageType(file)
+            if (validationResult !== true) {
+                setMessage(validationResult === 'File size exceeds 2MB limit' ? validationResult : `Please select a valid image file (${VALID_IMAGE_EXTENSIONS.join(', ')})`)
                 setSelectedFile(null)
                 setPreviewUrl(null)
                 return
@@ -202,7 +207,7 @@ export default function CheckImage() {
                                                 อัพโหลดรูปภาพใบหน้าที่นี่
                                             </p>
                                             <p className="mt-1 text-xs text-gray-500">
-                                                {VALID_IMAGE_EXTENSIONS.join(', ')} files supported
+                                                {VALID_IMAGE_EXTENSIONS.join(', ')} files supported <strong className='text-orange-400'>Limits Size(2MB)</strong>
                                             </p>
                                         </div>
                                     </label>
